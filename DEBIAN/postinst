@@ -1,0 +1,97 @@
+#!/bin/sh
+set -e
+
+# Define paths
+SYSTEM_JSON="/usr/share/word-wizard/german_flashcards.json"
+LOG_FILE="/var/log/word-wizard-install.log"
+USER_HOME=""
+USER_NAME=""
+
+# Function to log messages
+log() {
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - $1" >> "$LOG_FILE"
+}
+
+# Initialize system log file
+touch "$LOG_FILE" 2>/dev/null || { echo "Cannot write to $LOG_FILE"; exit 1; }
+chmod 644 "$LOG_FILE"
+log "Starting postinst script for Word Wizard"
+
+# Determine the user (handle sudo, root, or direct installation)
+if [ -n "$SUDO_USER" ]; then
+    USER_NAME="$SUDO_USER"
+    USER_HOME=$(getent passwd "$SUDO_USER" | cut -d: -f6)
+elif [ -n "$USER" ]; then
+    USER_NAME="$USER"
+    USER_HOME=$(getent passwd "$USER" | cut -d: -f6)
+else
+    USER_NAME=$(whoami)
+    USER_HOME=$(getent passwd "$USER_NAME" | cut -d: -f6)
+fi
+
+# Validate user and home directory
+if [ -z "$USER_NAME" ] || [ -z "$USER_HOME" ]; then
+    log "Error: Could not determine user or home directory"
+    exit 1
+fi
+
+log "Installing for user: $USER_NAME, home: $USER_HOME"
+
+# Define user-specific paths
+USER_DATA_DIR="$USER_HOME/.local/share/word_wizard"
+USER_JSON="$USER_DATA_DIR/german_flashcards.json"
+USER_LOG="$USER_DATA_DIR/word_wizard.log"
+USER_BACKUP="$USER_DATA_DIR/backup.json"
+
+# Create user data directory with correct permissions
+mkdir -p "$USER_DATA_DIR" 2>/dev/null || { log "Error: Failed to create $USER_DATA_DIR"; exit 1; }
+chmod 755 "$USER_DATA_DIR" || { log "Error: Failed to set permissions on $USER_DATA_DIR"; exit 1; }
+chown "$USER_NAME:$USER_NAME" "$USER_DATA_DIR" || { log "Error: Failed to set ownership on $USER_DATA_DIR"; exit 1; }
+log "Created directory: $USER_DATA_DIR with permissions 755 and ownership $USER_NAME"
+
+# Create and set permissions for user log file
+touch "$USER_LOG" 2>/dev/null || { log "Error: Failed to create $USER_LOG"; exit 1; }
+chmod 664 "$USER_LOG" || { log "Error: Failed to set permissions on $USER_LOG"; exit 1; }
+chown "$USER_NAME:$USER_NAME" "$USER_LOG" || { log "Error: Failed to set ownership on $USER_LOG"; exit 1; }
+log "Created and set permissions (664) and ownership ($USER_NAME) for $USER_LOG"
+
+# Create and set permissions for backup file
+touch "$USER_BACKUP" 2>/dev/null || { log "Error: Failed to create $USER_BACKUP"; exit 1; }
+chmod 664 "$USER_BACKUP" || { log "Error: Failed to set permissions on $USER_BACKUP"; exit 1; }
+chown "$USER_NAME:$USER_NAME" "$USER_BACKUP" || { log "Error: Failed to set ownership on $USER_BACKUP"; exit 1; }
+log "Created and set permissions (664) and ownership ($USER_NAME) for $USER_BACKUP"
+
+# Verify system JSON file exists
+if [ ! -f "$SYSTEM_JSON" ]; then
+    log "Error: System JSON file $SYSTEM_JSON not found"
+    exit 1
+fi
+
+# Copy JSON file to user directory
+if ! cp "$SYSTEM_JSON" "$USER_JSON"; then
+    log "Error: Failed to copy $SYSTEM_JSON to $USER_JSON"
+    exit 1
+fi
+log "Copied $SYSTEM_JSON to $USER_JSON"
+
+# Validate copied file
+if [ ! -s "$USER_JSON" ]; then
+    log "Error: Copied JSON file $USER_JSON is empty or too small"
+    exit 1
+fi
+
+# Validate JSON syntax
+if ! python3 -c "import json; json.load(open('$USER_JSON', 'r', encoding='utf-8'))" >/dev/null 2>&1; then
+    log "Error: Copied JSON file $USER_JSON is corrupted"
+    rm -f "$USER_JSON"  # Remove corrupted file
+    exit 1
+fi
+log "Validated JSON file: $USER_JSON"
+
+# Set permissions and ownership for JSON file
+chmod 664 "$USER_JSON" || { log "Error: Failed to set permissions on $USER_JSON"; exit 1; }
+chown "$USER_NAME:$USER_NAME" "$USER_JSON" || { log "Error: Failed to set ownership on $USER_JSON"; exit 1; }
+log "Set permissions (664) and ownership ($USER_NAME) for $USER_JSON"
+
+log "postinst script completed successfully"
+exit 0

@@ -1,0 +1,10 @@
+cat << EOF > word-wizard-1.0/usr/share/applications/word-wizard.desktop
+[Desktop Entry]
+Name=Word Wizard
+Exec=/usr/bin/word-wizard
+Type=Application
+Terminal=false
+Icon=/usr/share/icons/word-wizard.svg
+Categories=Education;
+Comment=Learn German vocabulary with flashcards
+EOF
